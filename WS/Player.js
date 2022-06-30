@@ -1,6 +1,9 @@
 /**************************************************
 ** GAME PLAYER CLASS
 **************************************************/
+
+//TODO: perhaps change to class
+
 var Player = function(u, n, s) {
 	var uid = u,
 		status = s,

@@ -1,4 +1,4 @@
-import React, {Component} from 'react'
+import React, {Component, useState} from 'react'
 
 import io from 'socket.io-client'
 
@@ -7,7 +7,10 @@ import TweenMax from 'gsap'
 import rand_arr_elem from '../../helpers/rand_arr_elem'
 import rand_to_fro from '../../helpers/rand_to_fro'
 
+import { v4 as uuid } from 'uuid';
+
 export default class SetName extends Component {
+
 
 	constructor (props) {
 		super(props)
@@ -26,24 +29,48 @@ export default class SetName extends Component {
 		]
 
 
-		if (this.props.game_type != 'live')
+		if (this.props.game_type === 'comp')
 			this.state = {
 				cell_vals: {},
 				next_turn_ply: true,
 				game_play: true,
 				game_stat: 'Start game'
 			}
-		else {
+		else if (this.props.game_type === 'live') {
 			this.sock_start()
 
 			this.state = {
 				cell_vals: {},
 				next_turn_ply: true,
 				game_play: false,
-				game_stat: 'Connecting'
+				game_stat: 'Connecting',
+				userId: uuid(),
+			}
+		}
+
+		else if (this.props.game_type === 'host') {
+			this.sock_start_host()
+
+			this.state = {
+				cell_vals: {},
+				next_turn_ply: true,
+				game_play: false,
+				game_stat: 'Connecting',
+				userId: uuid(),
+			}
+		}
+
+		else if (this.props.game_type === 'join') {
+			this.state = {
+				cell_vals: {},
+				next_turn_ply: true,
+				game_play: false,
+				game_stat: 'Connecting',
+				userId: uuid(),
 			}
 		}
 	}
+
 
 //	------------------------	------------------------	------------------------
 
@@ -60,14 +87,14 @@ export default class SetName extends Component {
 		this.socket = io(app.settings.ws_conf.loc.SOCKET__io.u);
 
 		this.socket.on('connect', function(data) { 
-			// console.log('socket connected', data)
+			console.log('socket connected', data)
 
 			this.socket.emit('new player', { name: app.settings.curr_user.name });
 
 		}.bind(this));
 
 		this.socket.on('pair_players', function(data) { 
-			// console.log('paired with ', data)
+			console.log('paired with ', data)
 
 			this.setState({
 				next_turn_ply: data.mode=='m',
@@ -79,9 +106,58 @@ export default class SetName extends Component {
 
 
 		this.socket.on('opp_turn', this.turn_opp_live.bind(this));
+	}
+
+	sock_start_host () {
+
+		this.socket = io(app.settings.ws_conf.loc.SOCKET__io.u);
+
+		this.socket.on('connect', function(data) { 
+			console.log('socket connected', data)
+
+			this.socket.emit('new player host', { name: app.settings.curr_user.name, id: this.state.userId });
+
+		}.bind(this));
+
+		this.socket.on('pair_players', function(data) { 
+			console.log('paired with ', data)
+
+			this.setState({
+				next_turn_ply: data.mode=='m',
+				game_play: true,
+				game_stat: 'Playing with ' + data.opp.name
+			})
+
+		}.bind(this));
 
 
+		this.socket.on('opp_turn', this.turn_opp_live.bind(this));
+	}
 
+	sock_start_join () {
+
+		this.socket = io(app.settings.ws_conf.loc.SOCKET__io.u);
+
+		this.socket.on('connect', function(data) { 
+			console.log('socket connected', data)
+
+			this.socket.emit('new player join', { name: app.settings.curr_user.name, id: this.state.joinCode });
+
+		}.bind(this));
+
+		this.socket.on('pair_players', function(data) { 
+			console.log('paired with ', data)
+
+			this.setState({
+				next_turn_ply: data.mode=='m',
+				game_play: true,
+				game_stat: 'Playing with ' + data.opp.name
+			})
+
+		}.bind(this));
+
+
+		this.socket.on('opp_turn', this.turn_opp_live.bind(this));
 	}
 
 //	------------------------	------------------------	------------------------
@@ -114,10 +190,22 @@ export default class SetName extends Component {
 
 				<h1>Play {this.props.game_type}</h1>
 
+				{this.props.game_type === 'host' && (
+					<p>Share code {this.state.userId}</p>
+				)}
+
+				{ this.props.game_type === 'join' && (
+					<div>
+						<input onChange={(e) => this.setState({ joinCode: e.target.value })} placeholder='enter code' />
+						<button onClick={this.sock_start_join.bind(this)}>enter</button>
+					</div>
+				)}
+
 				<div id="game_stat">
 					<div id="game_stat_msg">{this.state.game_stat}</div>
 					{this.state.game_play && <div id="game_turn_msg">{this.state.next_turn_ply ? 'Your turn' : 'Opponent turn'}</div>}
 				</div>
+
 
 				<div id="game_board">
 					<table>
@@ -159,7 +247,7 @@ export default class SetName extends Component {
 		const cell_id = e.currentTarget.id.substr(11)
 		if (this.state.cell_vals[cell_id]) return
 
-		if (this.props.game_type != 'live')
+		if (this.props.game_type === 'comp')
 			this.turn_ply_comp(cell_id)
 		else
 			this.turn_ply_live(cell_id)
@@ -199,10 +287,48 @@ export default class SetName extends Component {
 
 		for (let i=1; i<=9; i++) 
 			!cell_vals['c'+i] && empty_cells_arr.push('c'+i)
-		// console.log(cell_vals, empty_cells_arr, rand_arr_elem(empty_cells_arr))
 
-		const c = rand_arr_elem(empty_cells_arr)
-		cell_vals[c] = 'o'
+		let finalBlock = null;
+		let set;
+
+		// perhaps could be exposed as a 'medium' difficulty
+		for (let i=0; i<this.win_sets.length; i++) {
+			set = this.win_sets[i]
+			let count = 0;
+			let block = null;
+			if(cell_vals[set[0]] === 'x') {
+				count++;
+			} else {
+				block = set[0];
+			}
+			if(cell_vals[set[1]] === 'x') {
+				count++;
+			} else {
+				block = set[1];
+			}
+			if(cell_vals[set[2]] === 'x') {
+				count++;
+			} else {
+				block = set[2];
+			}
+
+			if(count == 2) {
+				finalBlock = block;
+			}
+		}
+
+		let c = finalBlock;
+
+		// block a win if detected
+		if(c && empty_cells_arr.includes(c)) {
+			console.log('BLOCK', c);
+			cell_vals[c] = 'o'
+		}
+		else {
+		 	c = rand_arr_elem(empty_cells_arr)
+			cell_vals[c] = 'o'
+		}
+
 
 		TweenMax.from(this.refs[c], 0.7, {opacity: 0, scaleX:0, scaleY:0, ease: Power4.easeOut})
 
@@ -279,7 +405,7 @@ export default class SetName extends Component {
 		let set
 		let fin = true
 
-		if (this.props.game_type!='live')
+		if (this.props.game_type === 'comp')
 			this.state.game_stat = 'Play'
 
 
@@ -321,7 +447,7 @@ export default class SetName extends Component {
 			this.socket && this.socket.disconnect();
 
 		} else {
-			this.props.game_type!='live' && this.state.next_turn_ply && setTimeout(this.turn_comp.bind(this), rand_to_fro(500, 1000));
+			this.props.game_type === 'comp' && this.state.next_turn_ply && setTimeout(this.turn_comp.bind(this), rand_to_fro(500, 1000));
 
 			this.setState({
 				next_turn_ply: !this.state.next_turn_ply
