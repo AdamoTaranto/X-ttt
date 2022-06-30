@@ -13,6 +13,8 @@ Player = require("./Player").Player;			// Player class
 players = [];									// Array of connected players
 players_avail = [];
 
+playersHost = [];
+playersHost_avail = [];
 
 var port = process.env.PORT || 3001;
 

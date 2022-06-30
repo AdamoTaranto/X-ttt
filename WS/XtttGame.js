@@ -1,5 +1,3 @@
-
-
 // ----	--------------------------------------------	--------------------------------------------	
 // ----	--------------------------------------------	--------------------------------------------	
 
@@ -25,6 +23,50 @@ function onNewPlayer(data) {
 	// updAdmin("looking for pair - uid:"+p.uid + " ("+p.name + ")");
 
 	// updAdmin("new player connected - uid:"+data.uid + " - "+data.name);
+
+};
+
+
+function onNewPlayerHost(data) {
+
+	util.log("New player has joined: "+data.name);
+
+	// Create a new player
+	var newPlayerHost = new Player(data.id, data.name, "looking"); // TODO: create new unique uuid()
+	newPlayerHost.sockid = this.id;
+
+	this.player = newPlayerHost;
+
+	// Add new player to the players array
+	playersHost.push(newPlayerHost);
+	playersHost_avail.push(newPlayerHost);
+
+};
+
+function onNewPlayerJoin(data) {
+
+	const id = data.id;
+	// find host to connect with
+	util.log("New player has joined: "+data.name);
+
+	// Create a new player
+	var newPlayerJoin = new Player(data.id, data.name, "looking"); // TODO: create new unique uuid()
+	newPlayerJoin.sockid = this.id;
+
+	this.player = newPlayerJoin;
+	const host = playersHost_avail.find(p => p.uid === id);
+
+	newPlayerJoin.mode = 'm';
+	host.mode = 's';
+	newPlayerJoin.status = 'paired';
+	host.status = 'paired';
+	newPlayerJoin.opp = host;
+	host.opp = newPlayerJoin;
+
+	if(host) {
+		io.to(newPlayerJoin.sockid).emit("pair_players", {opp: {name:host.name, uid:host.uid}, mode:'m'});
+		io.to(host.sockid).emit("pair_players", {opp: {name:newPlayerJoin.name, uid:newPlayerJoin.uid}, mode:'s'});
+	}
 
 };
 
@@ -103,6 +145,10 @@ set_game_sock_handlers = function (socket) {
 	// util.log("New game player has connected: "+socket.id);
 
 	socket.on("new player", onNewPlayer);
+
+	socket.on("new player host", onNewPlayerHost);
+
+	socket.on("new player join", onNewPlayerJoin);
 
 	socket.on("ply_turn", onTurn);
 
